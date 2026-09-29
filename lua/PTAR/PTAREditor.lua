@@ -88,6 +88,10 @@ local function position()
   end)
   return ok and p or nil
 end
+local function location_text(p)
+  if not p or not p.x or not p.y or not p.z then return 'Current position: unavailable' end
+  return string.format('Current position: X %.3f  Y %.3f  Z %.3f',p.x,p.y,p.z)
+end
 local function zone_ok()
   if not route then set_message('Create or load a route first'); return false end
   local zone=current_zone()
@@ -425,7 +429,9 @@ local function draw()
       text_input('Description',route_edit,'description')
       if imgui.Button('Apply Route Details & Save') then commit_route_edit() end
       imgui.Separator()
+      local here=position()
       imgui.Text('New waypoint (capture at current character position)')
+      imgui.Text(location_text(here))
       local type_index=capture_type_index()
       if labeled_combo('Capture type##capture_type',CAPTURE_TYPES[type_index].label) then
         for i,choice in ipairs(CAPTURE_TYPES) do
@@ -488,11 +494,11 @@ local function draw()
         ({normal='Capture Waypoint',door='Capture Door',finish='Capture Finish'})[kind]
       if imgui.Button(capture_label) then capture_waypoint() end
       imgui.Separator(); imgui.Text('Route Order (click a label to edit)')
-      local here=position()
       local table_flags=ImGuiTableFlags.Borders+ImGuiTableFlags.RowBg+ImGuiTableFlags.Resizable
-      if imgui.BeginTable('##route_order',5,table_flags) then
+      if imgui.BeginTable('##route_order',6,table_flags) then
         imgui.TableSetupColumn('Number',ImGuiTableColumnFlags.WidthFixed,68)
         imgui.TableSetupColumn('Label',ImGuiTableColumnFlags.WidthStretch)
+        imgui.TableSetupColumn('Waypoint ID',ImGuiTableColumnFlags.WidthFixed,110)
         imgui.TableSetupColumn('Type',ImGuiTableColumnFlags.WidthFixed,88)
         imgui.TableSetupColumn('From Previous',ImGuiTableColumnFlags.WidthFixed,125)
         imgui.TableSetupColumn('TAC Behavior',ImGuiTableColumnFlags.WidthFixed,180)
@@ -502,14 +508,15 @@ local function draw()
           imgui.TableNextRow()
           imgui.TableSetColumnIndex(0); imgui.Text(tostring(i))
           imgui.TableSetColumnIndex(1)
-          if imgui.Selectable(w.label..' ('..w.id..')##route_order_'..w.id,selected==w.id) then
+          if imgui.Selectable(w.label..'##route_order_'..w.id,selected==w.id) then
             if edit_dirty() and selected~=w.id then
               pending_selection=w.id; set_message('Apply or discard the selected waypoint edits before switching.')
             else select(w) end
           end
-          imgui.TableSetColumnIndex(2); imgui.Text(w.type)
-          imgui.TableSetColumnIndex(3); imgui.Text(delta and string.format('%.1f',delta) or '—')
-          imgui.TableSetColumnIndex(4); imgui.Text(tac_behavior(w))
+          imgui.TableSetColumnIndex(2); imgui.Text(w.id)
+          imgui.TableSetColumnIndex(3); imgui.Text(w.type)
+          imgui.TableSetColumnIndex(4); imgui.Text(delta and string.format('%.1f',delta) or '—')
+          imgui.TableSetColumnIndex(5); imgui.Text(tac_behavior(w))
         end
         imgui.EndTable()
       end
@@ -526,6 +533,7 @@ local function draw()
         local distance=core.distance(w,here)
         imgui.Text(string.format('Selected: #%d %s | distance from you: %s',index,w.id,distance and string.format('%.1f',distance) or 'unknown'))
         imgui.Text(string.format('Saved position: X %.3f  Y %.3f  Z %.3f',w.x,w.y,w.z))
+        imgui.Text(location_text(here))
         text_input('Label##edit',edit,'label'); type_combo('Type##edit',edit)
         text_input('Notes##edit',edit,'notes'); text_input('Radius##edit',edit,'radius')
         if w.type=='traverse' then
