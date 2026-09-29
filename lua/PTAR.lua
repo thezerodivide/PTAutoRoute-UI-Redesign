@@ -250,7 +250,7 @@ local function load_route()
     notice='Route is still being captured; add a Finish or Manual handoff waypoint before running.'; return
   end
   route=loaded; runner=machine.new(route,adapter)
-  notice='Loaded '..route.route_name..' ('..#route.waypoints..' waypoints). Log: '..diag:path()
+  notice='Loaded '..route.route_name..' ('..#route.waypoints..' waypoints).\nLog: '..diag:path()
   log('Loaded '..path..' with '..#route.waypoints..' waypoints')
   diag:debug('Route load snapshot: '..snapshot())
   save_settings()
