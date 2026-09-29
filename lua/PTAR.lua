@@ -295,7 +295,7 @@ local function draw()
         end
         imgui.EndCombo()
       end
-      -- While PTAR is setting TAC (DL-013) or mid-traversal (DL-001), Start/Use Nearest/Resume are unavailable;
+      -- While PTAR is setting TAC (DL-013) or mid-traversal (DL-001), Start/Resume are unavailable;
       -- Pause and Stop stay enabled. Both `busy` reasons are read fresh from runner state every frame -- never
       -- from `runner.message` -- because the traversal block's old message-based note was found live (2026-09-28)
       -- to get silently overwritten within seconds by the traversal's own routine progress narration, making it
@@ -310,11 +310,18 @@ local function draw()
         imgui.TextColored(1,0.8,0.2,1,'PTAR is mid-traversal ('..tostring(runner.phase)..'). Starting or resuming is unavailable until this phase completes. Pause and Stop still work.')
       end
       if busy then imgui.BeginDisabled() end
-      local start_clicked=imgui.Button('Start at selected')
-      imgui.SameLine(); local nearest_clicked=imgui.Button('Start at nearest valid')
+      local start_action
+      imgui.SetNextItemWidth(170)
+      if imgui.BeginCombo('##runner_start_action','Start') then
+        if imgui.Selectable('At Selected Waypoint') then start_action='selected' end
+        if imgui.Selectable('At Beginning Waypoint') then start_action='beginning' end
+        if imgui.Selectable('At Nearest Valid Waypoint') then start_action='nearest' end
+        imgui.EndCombo()
+      end
       if busy then imgui.EndDisabled() end
-      if start_clicked then runner:start(runner.selected,mq.gettime()) end
-      if nearest_clicked then runner:start_nearest(mq.gettime()) end
+      if start_action=='selected' then runner:start(runner.selected,mq.gettime()) end
+      if start_action=='beginning' then runner:start(1,mq.gettime()) end
+      if start_action=='nearest' then runner:start_nearest(mq.gettime()) end
       if imgui.Button('Pause') then runner:pause() end
       imgui.SameLine()
       if busy then imgui.BeginDisabled() end
