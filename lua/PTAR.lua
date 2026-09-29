@@ -256,7 +256,7 @@ local function load_route()
   save_settings()
 end
 local function draw()
-  imgui.SetNextWindowSize(ImVec2(560,520),ImGuiCond.FirstUseEver)
+  imgui.SetNextWindowSize(ImVec2(560,390),ImGuiCond.FirstUseEver)
   imgui.SetNextWindowPos(ImVec2(55,55),ImGuiCond.FirstUseEver)
   local open,visible=imgui.Begin('Project Triune AutoRoute v'..version.VERSION..'###Project Triune AutoRoute',true)
   if open==false then running=false end
@@ -339,25 +339,17 @@ local function draw()
     imgui.Separator()
     imgui.Text('Settings')
     imgui.AlignTextToFramePadding(); imgui.Text('Door Opening Role'); imgui.SameLine()
-    imgui.SetNextItemWidth(140)
-    local role_open=imgui.BeginCombo('##door_opening_role',door_role=='primary' and 'Primary' or 'Secondary')
-    if role_open then
+    local role_labels={primary='Primary (only one client)',secondary='Secondary (all other clients)'}
+    imgui.SetNextItemWidth(240)
+    if imgui.BeginCombo('##door_opening_role',role_labels[door_role]) then
       for _,choice in ipairs({'primary','secondary'}) do
-        local label=choice=='primary' and 'Primary' or 'Secondary'
-        if imgui.Selectable(label..'##door_role',door_role==choice) and door_role~=choice then
+        if imgui.Selectable(role_labels[choice]..'##door_role',door_role==choice) and door_role~=choice then
           door_role=choice
           log('Door role set to '..door_role)
           save_settings()
         end
       end
       imgui.EndCombo()
-    end
-    if role_open then
-      -- Reserve the option list's height below the fixed-position combo so its popup cannot cover the guidance.
-      imgui.Dummy(ImVec2(0,2*imgui.GetFrameHeightWithSpacing()))
-      imgui.TextWrapped('Primary: Opens doors. Only one client should select this option.')
-      imgui.TextWrapped('Secondary: Does not open doors. All other clients should select this option.')
-      imgui.TextWrapped('Exceptions: Every client clicks zoning doors. The current navigation-stall fallback can also click a previous door regardless of role.')
     end
     if imgui.Button(diag.echo and 'Console debug: ON' or 'Console debug: OFF') then
       diag:set_echo(not diag.echo,snapshot)
