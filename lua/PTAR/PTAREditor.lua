@@ -59,11 +59,11 @@ end
 local function set_message(s) message=tostring(s or '') end
 -- TAC events (DL-013): the forms hold 'none' | 'pause' | 'run'; a waypoint stores only 'pause' or 'run' (none = no field).
 local function tac_value(v) if v=='pause' or v=='run' then return v end; return nil end
-local function tac_tag(w)
+local function tac_behavior(w)
   local parts={}
-  if w.tac_before then parts[#parts+1]=tostring(w.tac_before)..' before' end
-  if w.tac_after then parts[#parts+1]=tostring(w.tac_after)..' after' end
-  return #parts>0 and (' | TAC: '..table.concat(parts,', ')) or ''
+  if w.tac_before then parts[#parts+1]=w.tac_before..' before' end
+  if w.tac_after then parts[#parts+1]=w.tac_after..' after' end
+  return #parts>0 and table.concat(parts,', ') or 'None'
 end
 local function safe_filename(name)
   local generated,err=files.filename(name)
@@ -486,18 +486,31 @@ local function draw()
         ({ledge='Capture Ledge',target='Capture Underwater Target',exit='Capture Exit'})[traverse_capture.step] or 'Capture Departure') or
         ({normal='Capture Waypoint',door='Capture Door',finish='Capture Finish'})[kind]
       if imgui.Button(capture_label) then capture_waypoint() end
-      imgui.Separator(); imgui.Text('Route Order (click to edit)')
+      imgui.Separator(); imgui.Text('Route Order (click a label to edit)')
       local here=position()
-      for i,w in ipairs(route.waypoints) do
-        local previous=route.waypoints[i-1]
-        local delta=core.distance(w,previous)
-        local row=string.format('#%d  %s  [%s, %s]%s%s',i,w.label,w.type,w.id,
-          delta and string.format('  |  %.1f from previous',delta) or '',tac_tag(w))
-        if imgui.Selectable(row..'##'..w.id,selected==w.id) then
-          if edit_dirty() and selected~=w.id then
-            pending_selection=w.id; set_message('Apply or discard the selected waypoint edits before switching.')
-          else select(w) end
+      local table_flags=ImGuiTableFlags.Borders+ImGuiTableFlags.RowBg+ImGuiTableFlags.Resizable
+      if imgui.BeginTable('##route_order',5,table_flags) then
+        imgui.TableSetupColumn('Number',ImGuiTableColumnFlags.WidthFixed,68)
+        imgui.TableSetupColumn('Label',ImGuiTableColumnFlags.WidthStretch)
+        imgui.TableSetupColumn('Type',ImGuiTableColumnFlags.WidthFixed,88)
+        imgui.TableSetupColumn('From Previous',ImGuiTableColumnFlags.WidthFixed,125)
+        imgui.TableSetupColumn('TAC Behavior',ImGuiTableColumnFlags.WidthFixed,180)
+        imgui.TableHeadersRow()
+        for i,w in ipairs(route.waypoints) do
+          local delta=core.distance(w,route.waypoints[i-1])
+          imgui.TableNextRow()
+          imgui.TableSetColumnIndex(0); imgui.Text(tostring(i))
+          imgui.TableSetColumnIndex(1)
+          if imgui.Selectable(w.label..' ('..w.id..')##route_order_'..w.id,selected==w.id) then
+            if edit_dirty() and selected~=w.id then
+              pending_selection=w.id; set_message('Apply or discard the selected waypoint edits before switching.')
+            else select(w) end
+          end
+          imgui.TableSetColumnIndex(2); imgui.Text(w.type)
+          imgui.TableSetColumnIndex(3); imgui.Text(delta and string.format('%.1f',delta) or '—')
+          imgui.TableSetColumnIndex(4); imgui.Text(tac_behavior(w))
         end
+        imgui.EndTable()
       end
       if pending_selection then
         imgui.TextWrapped('Waypoint edits are not applied. Apply them below, or discard them to select another waypoint.')
