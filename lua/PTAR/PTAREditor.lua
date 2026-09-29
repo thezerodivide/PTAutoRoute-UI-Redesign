@@ -564,10 +564,15 @@ local function draw()
           end
         end
         if imgui.Button('Apply Waypoint Edits & Save') then apply_metadata() end
+        -- Only the buttons that START a new action are gated on edit_dirty(); once a confirmation is
+        -- pending (replace_confirm_id/delete_confirm_id set), its Confirm/Cancel must stay clickable even if
+        -- the user then types into an unrelated field -- otherwise the confirmation becomes permanently stuck
+        -- (can't confirm, can't cancel) until they find the separate "Discard Typed Changes" control elsewhere.
         if edit_dirty() then imgui.BeginDisabled() end
         if imgui.Button('Replace Position') then
           if zone_ok() then replace_confirm_id=w.id; delete_confirm_id=nil end
         end
+        if edit_dirty() then imgui.EndDisabled() end
         if replace_confirm_id==w.id then
           local p=position(); local dist=core.distance(w,p)
           imgui.Text('Old to current position: '..(dist and string.format('%.2f',dist) or 'unavailable'))
@@ -578,9 +583,11 @@ local function draw()
           end
           imgui.SameLine(); if imgui.Button('Cancel Replace') then replace_confirm_id=nil end
         end
+        if edit_dirty() then imgui.BeginDisabled() end
         if imgui.Button('Move Up') then local j,e=core.move(route,w.id,-1); if j then saved() else set_message(e) end end
         imgui.SameLine(); if imgui.Button('Move Down') then local j,e=core.move(route,w.id,1); if j then saved() else set_message(e) end end
         if imgui.Button('Delete Selected') then delete_confirm_id=w.id; replace_confirm_id=nil end
+        if edit_dirty() then imgui.EndDisabled() end
         if delete_confirm_id==w.id then
           imgui.Text('Delete '..w.id..' - '..w.label..'?')
           if imgui.Button('Confirm Delete') then
@@ -589,7 +596,6 @@ local function draw()
           end
           imgui.SameLine(); if imgui.Button('Cancel Delete') then delete_confirm_id=nil end
         end
-        if edit_dirty() then imgui.EndDisabled() end
       end
       if last_creation then
         if edit_dirty() then imgui.BeginDisabled() end
