@@ -16,7 +16,6 @@ local running=true
 local filename=nil
 local start_mode='selected'
 local door_role='primary'
-local door_role_menu_open=false
 local confirmed_doors={}
 local choices={}
 local runner,route
@@ -339,11 +338,6 @@ local function draw()
     end
     imgui.Separator()
     imgui.Text('Settings')
-    if door_role_menu_open then
-      imgui.TextWrapped('Primary: Opens doors. Only one client should select this option.')
-      imgui.TextWrapped('Secondary: Does not open doors. All other clients should select this option.')
-      imgui.TextWrapped('Exceptions: Every client clicks zoning doors. The current navigation-stall fallback can also click a previous door regardless of role.')
-    end
     imgui.Text('Door Opening Role'); imgui.SameLine()
     imgui.SetNextItemWidth(140)
     local role_open=imgui.BeginCombo('##door_opening_role',door_role=='primary' and 'Primary' or 'Secondary')
@@ -358,7 +352,10 @@ local function draw()
       end
       imgui.EndCombo()
     end
-    door_role_menu_open=role_open
+    if role_open then
+      imgui.SameLine()
+      imgui.TextWrapped('Primary: Opens doors. Only one client should select this option.\nSecondary: Does not open doors. All other clients should select this option.\nExceptions: Every client clicks zoning doors. The current navigation-stall fallback can also click a previous door regardless of role.')
+    end
     if imgui.Button(diag.echo and 'Console debug: ON' or 'Console debug: OFF') then
       diag:set_echo(not diag.echo,snapshot)
       save_settings()
