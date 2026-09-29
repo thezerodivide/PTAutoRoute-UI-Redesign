@@ -14,6 +14,7 @@ local barrier_module=require('PTAR.PTARBarrier')
 local door_match=require('PTAR.PTARDoorMatch')
 local running=true
 local filename=nil
+local start_mode='selected'
 local door_role='primary'
 local door_role_menu_open=false
 local confirmed_doors={}
@@ -288,7 +289,7 @@ local function draw()
       local current=runner.index and route.waypoints[runner.index]
       imgui.Text('Current: '..(current and string.format('#%d %s',runner.index,current.label) or 'none'))
       local label=string.format('#%d %s [%s, %s]',runner.selected,chosen.label,chosen.type,chosen.id)
-      imgui.Text('Start waypoint'); imgui.SameLine()
+      imgui.Text('Selected waypoint'); imgui.SameLine()
       if imgui.BeginCombo('##runner_start_waypoint',label) then
         for i,w in ipairs(route.waypoints) do
           local entry=string.format('#%d %s [%s, %s]',i,w.label,w.type,w.id)
@@ -311,18 +312,22 @@ local function draw()
         imgui.TextColored(1,0.8,0.2,1,'PTAR is mid-traversal ('..tostring(runner.phase)..'). Starting or resuming is unavailable until this phase completes. Pause and Stop still work.')
       end
       if busy then imgui.BeginDisabled() end
-      local start_action
-      imgui.SetNextItemWidth(170)
-      if imgui.BeginCombo('##runner_start_action','Start') then
-        if imgui.Selectable('At Selected Waypoint') then start_action='selected' end
-        if imgui.Selectable('At Beginning Waypoint') then start_action='beginning' end
-        if imgui.Selectable('At Nearest Valid Waypoint') then start_action='nearest' end
+      local start_clicked=imgui.Button('Start')
+      if busy then imgui.EndDisabled() end
+      imgui.SameLine()
+      local start_labels={selected='At Selected Waypoint',beginning='At Beginning Waypoint',nearest='At Nearest Valid Waypoint'}
+      imgui.SetNextItemWidth(220)
+      if imgui.BeginCombo('##runner_start_method',start_labels[start_mode]) then
+        for _,mode in ipairs({'selected','beginning','nearest'}) do
+          if imgui.Selectable(start_labels[mode],start_mode==mode) then start_mode=mode end
+        end
         imgui.EndCombo()
       end
-      if busy then imgui.EndDisabled() end
-      if start_action=='selected' then runner:start(runner.selected,mq.gettime()) end
-      if start_action=='beginning' then runner:start(1,mq.gettime()) end
-      if start_action=='nearest' then runner:start_nearest(mq.gettime()) end
+      if start_clicked then
+        if start_mode=='selected' then runner:start(runner.selected,mq.gettime())
+        elseif start_mode=='beginning' then runner:start(1,mq.gettime())
+        else runner:start_nearest(mq.gettime()) end
+      end
       if imgui.Button('Pause') then runner:pause() end
       imgui.SameLine()
       if busy then imgui.BeginDisabled() end
@@ -330,7 +335,7 @@ local function draw()
       if busy then imgui.EndDisabled() end
       if resume_clicked then runner:resume(mq.gettime()) end
       imgui.SameLine(); if imgui.Button('Stop') then runner:stop() end
-      imgui.TextWrapped('Start restarts the route. Resume also finds the nearest reachable waypoint.')
+      imgui.TextWrapped('Start uses the selected method and restarts the route. Resume finds the nearest reachable waypoint.')
     end
     imgui.Separator()
     imgui.Text('Settings')
