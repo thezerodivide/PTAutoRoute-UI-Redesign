@@ -314,6 +314,7 @@ local function field_label(id)
 end
 local FIELD_X=315
 local function field_row(label)
+  imgui.AlignTextToFramePadding()
   imgui.Text(label)
   imgui.SameLine(FIELD_X)
   imgui.SetNextItemWidth(-1)

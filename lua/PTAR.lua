@@ -256,12 +256,13 @@ local function load_route()
   save_settings()
 end
 local function draw()
-  imgui.SetNextWindowSize(ImVec2(560,390),ImGuiCond.FirstUseEver)
+  imgui.SetNextWindowSize(ImVec2(560,580),ImGuiCond.FirstUseEver)
+  imgui.SetNextWindowSizeConstraints(ImVec2(560,580),ImVec2(10000,10000))
   imgui.SetNextWindowPos(ImVec2(55,55),ImGuiCond.FirstUseEver)
   local open,visible=imgui.Begin('Project Triune AutoRoute v'..version.VERSION..'###Project Triune AutoRoute',true)
   if open==false then running=false end
   if visible then
-    imgui.Text('Route'); imgui.SameLine()
+    imgui.AlignTextToFramePadding(); imgui.Text('Route'); imgui.SameLine()
     local display=filename or '(no routes found)'
     for _,entry in ipairs(choices) do if entry.file==filename then display=entry.label end end
     if imgui.BeginCombo('##runner_route',display) then
@@ -288,7 +289,7 @@ local function draw()
       local current=runner.index and route.waypoints[runner.index]
       imgui.Text('Current: '..(current and string.format('#%d %s',runner.index,current.label) or 'none'))
       local label=string.format('#%d %s [%s, %s]',runner.selected,chosen.label,chosen.type,chosen.id)
-      imgui.Text('Selected waypoint'); imgui.SameLine()
+      imgui.AlignTextToFramePadding(); imgui.Text('Selected waypoint'); imgui.SameLine()
       if imgui.BeginCombo('##runner_start_waypoint',label) then
         for i,w in ipairs(route.waypoints) do
           local entry=string.format('#%d %s [%s, %s]',i,w.label,w.type,w.id)
@@ -338,7 +339,7 @@ local function draw()
     end
     imgui.Separator()
     imgui.Text('Settings')
-    imgui.Text('Door Opening Role'); imgui.SameLine()
+    imgui.AlignTextToFramePadding(); imgui.Text('Door Opening Role'); imgui.SameLine()
     imgui.SetNextItemWidth(140)
     local role_open=imgui.BeginCombo('##door_opening_role',door_role=='primary' and 'Primary' or 'Secondary')
     if role_open then
@@ -354,7 +355,11 @@ local function draw()
     end
     if role_open then
       imgui.SameLine()
-      imgui.TextWrapped('Primary: Opens doors. Only one client should select this option.\nSecondary: Does not open doors. All other clients should select this option.\nExceptions: Every client clicks zoning doors. The current navigation-stall fallback can also click a previous door regardless of role.')
+      imgui.BeginGroup()
+      imgui.TextWrapped('Primary: Opens doors. Only one client should select this option.')
+      imgui.TextWrapped('Secondary: Does not open doors. All other clients should select this option.')
+      imgui.TextWrapped('Exceptions: Every client clicks zoning doors. The current navigation-stall fallback can also click a previous door regardless of role.')
+      imgui.EndGroup()
     end
     if imgui.Button(diag.echo and 'Console debug: ON' or 'Console debug: OFF') then
       diag:set_echo(not diag.echo,snapshot)
