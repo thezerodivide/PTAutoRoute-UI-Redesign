@@ -256,8 +256,7 @@ local function load_route()
   save_settings()
 end
 local function draw()
-  imgui.SetNextWindowSize(ImVec2(560,580),ImGuiCond.FirstUseEver)
-  imgui.SetNextWindowSizeConstraints(ImVec2(560,580),ImVec2(10000,10000))
+  imgui.SetNextWindowSize(ImVec2(560,520),ImGuiCond.FirstUseEver)
   imgui.SetNextWindowPos(ImVec2(55,55),ImGuiCond.FirstUseEver)
   local open,visible=imgui.Begin('Project Triune AutoRoute v'..version.VERSION..'###Project Triune AutoRoute',true)
   if open==false then running=false end
@@ -354,12 +353,11 @@ local function draw()
       imgui.EndCombo()
     end
     if role_open then
-      imgui.SameLine()
-      imgui.BeginGroup()
+      -- Reserve the option list's height below the fixed-position combo so its popup cannot cover the guidance.
+      imgui.Dummy(ImVec2(0,2*imgui.GetFrameHeightWithSpacing()))
       imgui.TextWrapped('Primary: Opens doors. Only one client should select this option.')
       imgui.TextWrapped('Secondary: Does not open doors. All other clients should select this option.')
       imgui.TextWrapped('Exceptions: Every client clicks zoning doors. The current navigation-stall fallback can also click a previous door regardless of role.')
-      imgui.EndGroup()
     end
     if imgui.Button(diag.echo and 'Console debug: ON' or 'Console debug: OFF') then
       diag:set_echo(not diag.echo,snapshot)
