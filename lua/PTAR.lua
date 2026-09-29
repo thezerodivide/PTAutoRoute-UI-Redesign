@@ -15,6 +15,7 @@ local door_match=require('PTAR.PTARDoorMatch')
 local running=true
 local filename=nil
 local door_role='primary'
+local door_role_menu_open=false
 local confirmed_doors={}
 local choices={}
 local runner,route
@@ -333,12 +334,26 @@ local function draw()
     end
     imgui.Separator()
     imgui.Text('Settings')
-    if imgui.Button('Door role: '..(door_role=='primary' and 'Primary' or 'Secondary')) then
-      door_role=door_role=='primary' and 'secondary' or 'primary'
-      log('Door role set to '..door_role)
-      save_settings()
+    if door_role_menu_open then
+      imgui.TextWrapped('Primary: Opens doors. Only one client should select this option.')
+      imgui.TextWrapped('Secondary: Does not open doors. All other clients should select this option.')
+      imgui.TextWrapped('Exceptions: Every client clicks zoning doors. The current navigation-stall fallback can also click a previous door regardless of role.')
     end
-    imgui.SameLine()
+    imgui.Text('Door Opening Role'); imgui.SameLine()
+    imgui.SetNextItemWidth(140)
+    local role_open=imgui.BeginCombo('##door_opening_role',door_role=='primary' and 'Primary' or 'Secondary')
+    if role_open then
+      for _,choice in ipairs({'primary','secondary'}) do
+        local label=choice=='primary' and 'Primary' or 'Secondary'
+        if imgui.Selectable(label..'##door_role',door_role==choice) and door_role~=choice then
+          door_role=choice
+          log('Door role set to '..door_role)
+          save_settings()
+        end
+      end
+      imgui.EndCombo()
+    end
+    door_role_menu_open=role_open
     if imgui.Button(diag.echo and 'Console debug: ON' or 'Console debug: OFF') then
       diag:set_echo(not diag.echo,snapshot)
       save_settings()
