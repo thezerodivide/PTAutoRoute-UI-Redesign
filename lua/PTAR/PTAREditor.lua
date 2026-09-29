@@ -312,14 +312,20 @@ local function field_label(id)
   if label then return label,label:gsub('[^%w_]','_')..'_'..scope end
   return id,id:gsub('[^%w_]','_')
 end
+local FIELD_X=315
+local function field_row(label)
+  imgui.Text(label)
+  imgui.SameLine(FIELD_X)
+  imgui.SetNextItemWidth(-1)
+end
 local function labeled_combo(id,preview)
   local label,scope=field_label(id)
-  imgui.Text(label); imgui.SameLine()
+  field_row(label)
   return imgui.BeginCombo('##'..scope,preview)
 end
 local function text_input(label,obj,key)
   local visible,scope=field_label(label)
-  imgui.Text(visible); imgui.SameLine()
+  field_row(visible)
   obj[key]=imgui.InputText('##'..scope,obj[key] or '')
 end
 local function type_combo(id,obj)
