@@ -13,6 +13,7 @@ local route,filename,selected,last_creation,last_capture
 local state,message='Unsaved','Create or load a route.'
 local file_draft={value='NewRoute'}
 local import_draft={value=''}
+local show_create=false; local show_register=false
 local existing,existing_file={},nil
 local name_draft={value='New Route'}
 local description_draft={value=''}
@@ -20,7 +21,8 @@ local capture={label='',notes='',radius='',manual_handoff=false,door_after='cont
 local traverse_capture=nil
 local action=1
 local running=true
-local edit={}; local route_edit={}; local delete_confirm_id=nil; local replace_confirm_id=nil
+local edit={}; local edit_original={}; local route_edit={}; local route_edit_original={}
+local pending_selection=nil; local delete_confirm_id=nil; local replace_confirm_id=nil
 local TYPES={'normal','door','finish'}
 local ACTIONS={
   {label='Add Waypoint',kind='normal',where='append'},
@@ -30,10 +32,28 @@ local ACTIONS={
   {label='Drop into water',kind='traverse',preset='water_drop'},
   {label='Water crossing',kind='traverse',preset='water_cross'},
 }
+local CAPTURE_TYPES={
+  {kind='normal',label='Waypoint'}, {kind='door',label='Door'}, {kind='finish',label='Finish'},
+  {kind='traverse',preset='ground',label='Ground drop'},
+  {kind='traverse',preset='water_drop',label='Drop into water'},
+  {kind='traverse',preset='water_cross',label='Water crossing'},
+}
 for _,placement in ipairs({{where='before',label='Before'},{where='after',label='After'}}) do
   for _,kind in ipairs(TYPES) do
     local name=({normal='Waypoint',door='Door',finish='Finish'})[kind]
     ACTIONS[#ACTIONS+1]={label='Insert '..name..' '..placement.label,kind=kind,where=placement.where}
+  end
+end
+local function capture_type_index()
+  local current=ACTIONS[action]
+  for i,choice in ipairs(CAPTURE_TYPES) do
+    if choice.kind==current.kind and choice.preset==current.preset then return i end
+  end
+  return 1
+end
+local function choose_capture(kind,preset,where)
+  for i,choice in ipairs(ACTIONS) do
+    if choice.kind==kind and choice.preset==preset and choice.where==where then action=i; return end
   end
 end
 local function set_message(s) message=tostring(s or '') end
@@ -95,11 +115,18 @@ local function sync_edit(w)
     underwater_radius=w.underwater_target and tostring(w.underwater_target.radius) or '',
     exit_radius=w.exit and tostring(w.exit.radius) or '',
     tac_before=w.tac_before or 'none',tac_after=w.tac_after or 'none'}
+  edit_original={}; for k,v in pairs(edit) do edit_original[k]=v end
 end
+local function draft_changed(draft,original)
+  for k,v in pairs(draft) do if original[k]~=v then return true end end
+  return false
+end
+local function edit_dirty() return selected~=nil and draft_changed(edit,edit_original) end
+local function route_edit_dirty() return route~=nil and draft_changed(route_edit,route_edit_original) end
 local function select(w)
   local id=w and w.id or nil
   if selected==id then return end
-  selected=id; delete_confirm_id=nil; replace_confirm_id=nil
+  selected=id; pending_selection=nil; delete_confirm_id=nil; replace_confirm_id=nil
   if w then sync_edit(w) end
 end
 local function saved()
@@ -132,6 +159,7 @@ local function prepared_fields(draft,kind)
   return fields
 end
 local function capture_waypoint()
+  if edit_dirty() or route_edit_dirty() then set_message('Apply or discard typed edits before capturing a waypoint'); return end
   if not zone_ok() then return end
   local chosen=ACTIONS[action]
   local p=position(); if not p then set_message('Could not read character position and heading'); return end
@@ -205,17 +233,20 @@ local function capture_waypoint()
 end
 local function do_new()
   if traverse_capture then set_message('Finish or cancel the traversal capture before creating another route'); return end
+  if edit_dirty() or route_edit_dirty() then set_message('Apply or discard typed edits before changing routes'); return end
   if route and not state:match('^Saved') then set_message('Current route is unsaved; fix/save it before switching routes'); return end
   local path,e=safe_filename(file_draft.value); if not path then set_message(e); return end
   if core.exists(path) or core.exists(path..'.tmp') or core.exists(path..'.bak') then set_message('File already exists; choose another filename or Load Route'); return end
   local zone=current_zone(); if not zone or zone=='' then set_message('Cannot read current zone'); return end
   route=core.new(name_draft.value,zone,description_draft.value); filename=path; last_creation=nil; last_capture=nil; select(nil)
-  route_edit={name=route.route_name,description=route.description}; saved()
+  route_edit={name=route.route_name,description=route.description}; route_edit_original={name=route_edit.name,description=route_edit.description}; saved()
+  show_create=false
   refresh_routes(); existing_file=path:match('[^/\\]+$')
   set_message('Created route in zone '..zone..'. '..message)
 end
 local function do_load()
   if traverse_capture then set_message('Finish or cancel the traversal capture before loading another route'); return end
+  if edit_dirty() or route_edit_dirty() then set_message('Apply or discard typed edits before changing routes'); return end
   if route and not state:match('^Saved') then set_message('Current route is unsaved; fix/save it before switching routes'); return end
   if not existing_file then set_message('Select an existing route'); return end
   local path=paths.config..'/'..existing_file
@@ -223,14 +254,21 @@ local function do_load()
   local loaded,notice=core.recover(path); if not loaded then set_message(notice); return end
   route=loaded; filename=path; last_creation=nil; last_capture=nil; select(nil)
   route_edit={name=route.route_name,description=route.description or ''}
+  route_edit_original={name=route_edit.name,description=route_edit.description}
   state=notice and 'Recovered' or 'Saved (loaded)'; set_message(notice or 'Route loaded.')
 end
 local function commit_route_edit()
   if not route then return end
+  local old_name,old_description=route.route_name,route.description
   route.route_name=route_edit.name; route.description=route_edit.description; saved()
+  if state:match('^Saved') then route_edit_original={name=route_edit.name,description=route_edit.description} end
+  if state=='Save failed' then route.route_name=old_name; route.description=old_description end
 end
 local function apply_metadata()
   local w=selected_wp(); if not w then return end
+  local old={}; for k,v in pairs(w) do old[k]=v end
+  local old_underwater_radius=w.underwater_target and w.underwater_target.radius
+  local old_exit_radius=w.exit and w.exit.radius
   local radius,e=parse_radius(edit.radius,edit.type=='finish'); if e then set_message(e); return end
   if edit.type=='traverse' and (not radius or radius>5) then
     set_message('Traversal approach radius must be from 0 to 5'); return
@@ -245,25 +283,47 @@ local function apply_metadata()
     if ee then set_message(ee); return end
     w.exit.radius=er
   end
+  local door
+  if edit.type=='door' then
+    door={id=tonumber(edit.door_id),name=edit.door_name,x=tonumber(edit.door_x),y=tonumber(edit.door_y),z=tonumber(edit.door_z)}
+    if not door.id or door.id%1~=0 or not door.name or door.name=='' or not door.x or not door.y or not door.z then
+      set_message('Door requires ID, name, X, Y, Z'); return end
+  end
   local old_type=w.type
   w.label=edit.label; w.type=edit.type; w.notes=edit.notes; w.radius=radius
   w.manual_handoff=edit.type=='normal' and (edit.manual_handoff and true or nil) or nil
   w.tac_before=tac_value(edit.tac_before); w.tac_after=tac_value(edit.tac_after)
   if edit.type~='traverse' then w.phases=nil; w.ledge=nil; w.underwater_target=nil; w.exit=nil end
   if edit.type=='door' then
-    local d={id=tonumber(edit.door_id),name=edit.door_name,x=tonumber(edit.door_x),y=tonumber(edit.door_y),z=tonumber(edit.door_z)}
-    if not d.id or d.id%1~=0 or not d.name or d.name=='' or not d.x or not d.y or not d.z then
-      set_message('Door requires ID, name, X, Y, Z'); return end
-    w.door=d; w.door_after=edit.door_after~='continue' and edit.door_after or nil
+    w.door=door; w.door_after=edit.door_after~='continue' and edit.door_after or nil
   else w.door=nil; w.door_after=nil end
   if old_type~=edit.type then set_message('Type changed; checking required metadata') end
   saved()
+  if state:match('^Saved') then sync_edit(w); pending_selection=nil end
+  if state=='Save failed' then
+    for k in pairs(w) do w[k]=nil end
+    for k,v in pairs(old) do w[k]=v end
+    if w.underwater_target then w.underwater_target.radius=old_underwater_radius end
+    if w.exit then w.exit.radius=old_exit_radius end
+  end
+end
+local function field_label(id)
+  local label,scope=id:match('^(.-)##(.+)$')
+  if label then return label,label:gsub('[^%w_]','_')..'_'..scope end
+  return id,id:gsub('[^%w_]','_')
+end
+local function labeled_combo(id,preview)
+  local label,scope=field_label(id)
+  imgui.Text(label); imgui.SameLine()
+  return imgui.BeginCombo('##'..scope,preview)
 end
 local function text_input(label,obj,key)
-  obj[key]=imgui.InputText(label,obj[key] or '')
+  local visible,scope=field_label(label)
+  imgui.Text(visible); imgui.SameLine()
+  obj[key]=imgui.InputText('##'..scope,obj[key] or '')
 end
 local function type_combo(id,obj)
-  if imgui.BeginCombo(id,obj.type or 'normal') then
+  if labeled_combo(id,obj.type or 'normal') then
     for _,kind in ipairs(TYPES) do
       if imgui.Selectable(kind,obj.type==kind) then obj.type=kind end
     end
@@ -271,7 +331,7 @@ local function type_combo(id,obj)
   end
 end
 local function handoff_combo(id,obj)
-  if imgui.BeginCombo(id,obj.manual_handoff and 'Manual handoff' or 'Continue route') then
+  if labeled_combo(id,obj.manual_handoff and 'Manual handoff' or 'Continue route') then
     if imgui.Selectable('Continue route',not obj.manual_handoff) then obj.manual_handoff=false end
     if imgui.Selectable('Manual handoff',obj.manual_handoff) then obj.manual_handoff=true end
     imgui.EndCombo()
@@ -280,7 +340,7 @@ end
 local function tac_combo(id,obj,key)
   local labels={none='None',pause='Pause TAC',run='Run TAC'}
   local current=obj[key] or 'none'
-  if imgui.BeginCombo(id,labels[current] or labels.none) then
+  if labeled_combo(id,labels[current] or labels.none) then
     for _,choice in ipairs({'none','pause','run'}) do
       if imgui.Selectable(labels[choice],current==choice) then obj[key]=choice end
     end
@@ -290,7 +350,7 @@ end
 local function door_after_combo(id,obj)
   local labels={continue='Continue to next waypoint',finish_open='Finish upon open',finish_zone='Click door, then finish after zoning'}
   local current=obj.door_after or 'continue'
-  if imgui.BeginCombo(id,labels[current]) then
+  if labeled_combo(id,labels[current]) then
     for _,choice in ipairs({'continue','finish_open','finish_zone'}) do
       if imgui.Selectable(labels[choice],current==choice) then obj.door_after=choice end
     end
@@ -298,54 +358,93 @@ local function door_after_combo(id,obj)
   end
 end
 local function draw()
-  imgui.SetNextWindowSize(ImVec2(760,620),ImGuiCond.FirstUseEver)
+  imgui.SetNextWindowSize(ImVec2(800,680),ImGuiCond.FirstUseEver)
   imgui.SetNextWindowPos(ImVec2(55,55),ImGuiCond.FirstUseEver)
   local open,visible=imgui.Begin('Project Triune AutoRoute Editor v'..version.VERSION..'###Project Triune AutoRoute Editor',true)
   if open==false then running=false end
   if visible then
-    if imgui.Button('Close Editor') then running=false end
-    text_input('New route filename (PTAR_ added)',file_draft,'value')
-    if imgui.Button('New Route') then do_new() end
-    text_input('Add existing route filename',import_draft,'value')
-    if imgui.Button('Add Existing Route') then
-      local name,err=files.filename(import_draft.value)
-      if not name then set_message(err)
-      else
-        local ok,reason=files.add(paths.config,name)
-        if ok then refresh_routes(); existing_file=name; set_message('Added '..name..' to route list.')
-        else set_message(reason) end
-      end
-    end
-    if imgui.BeginCombo('Existing route',existing_file or '(none)') then
+    imgui.Text('Routes')
+    if labeled_combo('Existing route##existing_route',existing_file or '(none)') then
       for _,entry in ipairs(existing) do
         if imgui.Selectable(entry.label..'##'..entry.file,existing_file==entry.file) then existing_file=entry.file end
       end
       imgui.EndCombo()
     end
-    if imgui.Button('Refresh Routes') then refresh_routes() end
-    imgui.SameLine(); if imgui.Button('Load Route') then do_load() end
-    imgui.SameLine(); if imgui.Button('Save') then saved() end
+    if imgui.Button('Load Route') then do_load() end
+    imgui.SameLine(); if imgui.Button('Refresh Routes') then refresh_routes() end
+    imgui.SameLine(); if imgui.Button(show_create and 'Hide New Route' or 'New Route...') then show_create=not show_create end
+    if show_create then
+      text_input('New route filename (PTAR_ added)',file_draft,'value')
+      text_input('New route name',name_draft,'value')
+      text_input('New route description',description_draft,'value')
+      if imgui.Button('Create Route') then do_new() end
+    end
+    if imgui.Button(show_register and 'Hide Register File' or 'Register Route File...') then show_register=not show_register end
+    if show_register then
+      imgui.TextWrapped('Register a valid route file already in config/PTAR but missing from the list.')
+      text_input('Route file to register (PTAR_ added)',import_draft,'value')
+      if imgui.Button('Register Existing File') then
+        local name,err=files.filename(import_draft.value)
+        if not name then set_message(err)
+        else
+          local ok,reason=files.add(paths.config,name)
+          if ok then refresh_routes(); existing_file=name; set_message('Added '..name..' to route list.')
+          else set_message(reason) end
+        end
+      end
+    end
+    imgui.Separator()
     imgui.Text('Status: '..state)
     imgui.TextWrapped(message)
     if route then
+      imgui.TextWrapped('Captures and route-order actions save immediately. Typed route and waypoint fields need Apply & Save.')
+      if state=='Save failed' or state=='Saved (not listed)' then
+        if imgui.Button('Retry Save') then saved() end
+      end
+      if edit_dirty() or route_edit_dirty() then
+        imgui.TextColored(1,0.8,0.2,1,'Typed changes have not been applied.')
+        if imgui.Button('Discard Typed Changes') then
+          route_edit={name=route_edit_original.name,description=route_edit_original.description}
+          local current=selected_wp(); if current then sync_edit(current) end
+          pending_selection=nil; set_message('Unapplied typed changes discarded.')
+        end
+      end
+      local errors,warnings=core.validate(route)
+      for _,s in ipairs(errors) do imgui.TextWrapped('ERROR: '..s) end
+      for _,s in ipairs(warnings) do imgui.TextWrapped('Warning: '..s) end
       imgui.Separator()
       imgui.Text('Loaded: '..(filename or '')..' | Zone: '..route.zone_short_name..' | Here: '..tostring(current_zone()))
       text_input('Route name',route_edit,'name')
       text_input('Description',route_edit,'description')
-      if imgui.Button('Commit Route Details') then commit_route_edit() end
+      if imgui.Button('Apply Route Details & Save') then commit_route_edit() end
       imgui.Separator()
       imgui.Text('New waypoint (capture at current character position)')
-      if imgui.BeginCombo('Action##capture',ACTIONS[action].label) then
-        for i,choice in ipairs(ACTIONS) do
-          if imgui.Selectable(choice.label,action==i) then
-            if traverse_capture and i~=action then
-              set_message('Finish or cancel the traversal capture before changing actions')
-            else action=i end
+      local type_index=capture_type_index()
+      if labeled_combo('Capture type##capture_type',CAPTURE_TYPES[type_index].label) then
+        for i,choice in ipairs(CAPTURE_TYPES) do
+          if imgui.Selectable(choice.label..'##capture_type_'..i,type_index==i) then
+            if traverse_capture and i~=type_index then
+              set_message('Finish or cancel the traversal capture before changing type')
+            else
+              local where=choice.kind=='traverse' and nil or (ACTIONS[action].where or 'append')
+              choose_capture(choice.kind,choice.preset,where)
+            end
           end
         end
         imgui.EndCombo()
       end
       local kind=ACTIONS[action].kind
+      if kind~='traverse' then
+        local placement=ACTIONS[action].where
+        local labels={append='At end',before='Before selected',after='After selected'}
+        if labeled_combo('Placement##capture_placement',labels[placement]) then
+          for _,where in ipairs({'append','before','after'}) do
+            if imgui.Selectable(labels[where],placement==where) then choose_capture(kind,nil,where) end
+          end
+          imgui.EndCombo()
+        end
+        if placement~='append' and not selected then imgui.TextWrapped('Select a waypoint in Route Order for this placement.') end
+      end
       if kind=='traverse' then
         imgui.TextWrapped('The traversal is inserted after the selected waypoint, or appended if none is selected. Use this same Capture button at each point in order: departure and heading, ledge (if falling), underwater target (if swimming), and exit.')
       end
@@ -377,20 +476,36 @@ local function draw()
         if d then imgui.Text(string.format('Door target: %s | ID %d | distance %.1f | X %.3f Y %.3f Z %.3f',d.name,d.id,d.distance or -1,d.x,d.y,d.z))
         else imgui.Text('No valid door target. Select Nearest Door or choose a door with /doortarget id <number>.') end
       end
-      if imgui.Button('Capture Selected Action') then capture_waypoint() end
-      imgui.Separator(); imgui.Text('Route order (click to select)')
+      local capture_label=kind=='traverse' and (traverse_capture and
+        ({ledge='Capture Ledge',target='Capture Underwater Target',exit='Capture Exit'})[traverse_capture.step] or 'Capture Departure') or
+        ({normal='Capture Waypoint',door='Capture Door',finish='Capture Finish'})[kind]
+      if imgui.Button(capture_label) then capture_waypoint() end
+      imgui.Separator(); imgui.Text('Route Order (click to edit)')
       local here=position()
       for i,w in ipairs(route.waypoints) do
         local previous=route.waypoints[i-1]
         local delta=core.distance(w,previous)
-        local row=string.format('#%d | %s | %s | %s | X %.3f Y %.3f Z %.3f%s%s',i,w.id,w.label,w.type,w.x,w.y,w.z,delta and string.format(' | from previous %.1f',delta) or '',tac_tag(w))
-        if imgui.Selectable(row..'##'..w.id,selected==w.id) then select(w) end
+        local row=string.format('#%d  %s  [%s, %s]%s%s',i,w.label,w.type,w.id,
+          delta and string.format('  |  %.1f from previous',delta) or '',tac_tag(w))
+        if imgui.Selectable(row..'##'..w.id,selected==w.id) then
+          if edit_dirty() and selected~=w.id then
+            pending_selection=w.id; set_message('Apply or discard the selected waypoint edits before switching.')
+          else select(w) end
+        end
+      end
+      if pending_selection then
+        imgui.TextWrapped('Waypoint edits are not applied. Apply them below, or discard them to select another waypoint.')
+        if imgui.Button('Discard Edits & Switch') then
+          for _,entry in ipairs(route.waypoints) do if entry.id==pending_selection then select(entry); break end end
+        end
+        imgui.SameLine(); if imgui.Button('Stay Here') then pending_selection=nil end
       end
       local w,index=selected_wp()
       if w then
         imgui.Separator()
         local distance=core.distance(w,here)
         imgui.Text(string.format('Selected: #%d %s | distance from you: %s',index,w.id,distance and string.format('%.1f',distance) or 'unknown'))
+        imgui.Text(string.format('Saved position: X %.3f  Y %.3f  Z %.3f',w.x,w.y,w.z))
         text_input('Label##edit',edit,'label'); type_combo('Type##edit',edit)
         text_input('Notes##edit',edit,'notes'); text_input('Radius##edit',edit,'radius')
         if w.type=='traverse' then
@@ -420,7 +535,8 @@ local function draw()
             end
           end
         end
-        if imgui.Button('Edit Metadata (Commit)') then apply_metadata() end
+        if imgui.Button('Apply Waypoint Edits & Save') then apply_metadata() end
+        if edit_dirty() then imgui.BeginDisabled() end
         if imgui.Button('Replace Position') then
           if zone_ok() then replace_confirm_id=w.id; delete_confirm_id=nil end
         end
@@ -445,21 +561,17 @@ local function draw()
           end
           imgui.SameLine(); if imgui.Button('Cancel Delete') then delete_confirm_id=nil end
         end
+        if edit_dirty() then imgui.EndDisabled() end
       end
       if last_creation then
+        if edit_dirty() then imgui.BeginDisabled() end
         if imgui.Button('Undo Last Creation') then
           local ok,e=core.remove(route,last_creation)
           if ok then if selected==last_creation then select(nil) end; last_creation=nil; saved()
           else last_creation=nil; set_message(e) end
         end
+        if edit_dirty() then imgui.EndDisabled() end
       end
-      local errors,warnings=core.validate(route)
-      for _,s in ipairs(errors) do imgui.TextWrapped('ERROR: '..s) end
-      for _,s in ipairs(warnings) do imgui.TextWrapped('Warning: '..s) end
-    else
-      imgui.Separator()
-      text_input('New route name',name_draft,'value')
-      text_input('New route description',description_draft,'value')
     end
   end
   imgui.End()
